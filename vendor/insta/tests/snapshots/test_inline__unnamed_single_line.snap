@@ -1,0 +1,5 @@
+---
+source: tests/test_inline.rs
+expression: "\"Testing\""
+---
+Testing
