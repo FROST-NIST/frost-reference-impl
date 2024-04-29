@@ -8,16 +8,16 @@ edition = "2021"
 [dependencies]
 async-trait = "0.1.77"
 frost-ed25519 = { path = "../frost-ed25519", features = ["serde"] }
-reddsa = { git = "https://github.com/ZcashFoundation/reddsa.git", rev = "81c649c412e5b6ba56d491d2857f91fbd28adbc7", features = ["frost"] }
+frost-ed448 = { path = "../frost-ed448", features = ["serde"] }
 hex = "0.4"
 rand = "0.8"
 eyre = "0.6.12"
 exitcode = "1.1.2"
 serde_json = "1.0"
 clap = { version = "4.4.7", features = ["derive"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
 message-io = "0.18"
 
 [features]
-redpallas = []
+ed448 = []
 default = []

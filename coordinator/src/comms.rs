@@ -1,10 +1,10 @@
 pub mod cli;
 pub mod socket;
 
-#[cfg(not(feature = "redpallas"))]
+#[cfg(not(feature = "ed448"))]
 use frost_ed25519 as frost;
-#[cfg(feature = "redpallas")]
-use reddsa::frost::redpallas as frost;
+#[cfg(feature = "ed448")]
+use frost_ed448 as frost;
 
 use std::{
     collections::BTreeMap,

@@ -1,4 +1,4 @@
-#![cfg(not(feature = "redpallas"))]
+#![cfg(not(feature = "ed448"))]
 
 use coordinator::args::Args as CoordinatorArgs;
 use coordinator::comms::cli::CLIComms as CoordinatorCLIComms;

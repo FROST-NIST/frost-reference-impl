@@ -19,14 +19,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test
 
-  test_redpallas:
-    name: Test with redpallas
+  test_ed448:
+    name: Test with ed448
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4.1.1
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --features redpallas
+      - run: cargo test --features ed448
 
   clippy:
     name: Clippy
