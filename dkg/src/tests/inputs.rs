@@ -1,4 +1,4 @@
-#![cfg(not(feature = "redpallas"))]
+#![cfg(not(feature = "ed448"))]
 
 use std::io::BufWriter;
 

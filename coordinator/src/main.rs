@@ -1,4 +1,4 @@
-#[cfg(all(test, not(feature = "redpallas")))]
+#[cfg(all(test, not(feature = "ed448")))]
 mod tests;
 
 use std::io;

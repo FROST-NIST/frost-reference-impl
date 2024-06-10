@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 eyre = "0.6.12"
 frost-ed25519 = { path = "../frost-ed25519", features = ["serde"] }
-reddsa = { git = "https://github.com/ZcashFoundation/reddsa.git", rev = "81c649c412e5b6ba56d491d2857f91fbd28adbc7", features = ["frost"] }
+frost-ed448 = { path = "../frost-ed448", features = ["serde"] }
 hex = { version = "0.4", features = ["serde"] }
 thiserror = "1.0"
 rand = "0.8"
@@ -18,5 +18,5 @@ exitcode = "1.1.2"
 pipe = "0.4.0"
 
 [features]
-redpallas = []
+ed448 = []
 default = []

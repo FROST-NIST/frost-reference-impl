@@ -1,7 +1,7 @@
-#[cfg(not(feature = "redpallas"))]
+#[cfg(not(feature = "ed448"))]
 use frost_ed25519 as frost;
-#[cfg(feature = "redpallas")]
-use reddsa::frost::redpallas as frost;
+#[cfg(feature = "ed448")]
+use frost_ed448 as frost;
 
 use frost::keys::{IdentifierList, PublicKeyPackage, SecretShare};
 use frost::{Error, Identifier, SigningKey};
@@ -56,7 +56,7 @@ pub fn split_secret(
     Ok((shares, pubkeys))
 }
 
-#[cfg(not(feature = "redpallas"))]
+#[cfg(not(feature = "ed448"))]
 #[cfg(test)]
 mod tests {
 

@@ -1,4 +1,4 @@
-#![cfg(not(feature = "redpallas"))]
+#![cfg(not(feature = "ed448"))]
 
 use frost::keys::{IdentifierList, PublicKeyPackage, SecretShare};
 use frost::Identifier;

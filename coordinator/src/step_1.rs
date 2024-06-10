@@ -1,7 +1,7 @@
-#[cfg(not(feature = "redpallas"))]
+#[cfg(not(feature = "ed448"))]
 use frost_ed25519 as frost;
-#[cfg(feature = "redpallas")]
-use reddsa::frost::redpallas as frost;
+#[cfg(feature = "ed448")]
+use frost_ed448 as frost;
 
 use frost::{keys::PublicKeyPackage, round1::SigningCommitments, Identifier};
 
@@ -81,7 +81,7 @@ pub fn print_participants(
     }
 }
 
-#[cfg(all(test, not(feature = "redpallas")))]
+#[cfg(all(test, not(feature = "ed448")))]
 mod tests {
     use std::collections::BTreeMap;
 

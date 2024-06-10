@@ -1,10 +1,10 @@
 //! Socket implementation of the Comms trait, using message-io.
 
 use async_trait::async_trait;
-#[cfg(not(feature = "redpallas"))]
+#[cfg(not(feature = "ed448"))]
 use frost_ed25519 as frost;
-#[cfg(feature = "redpallas")]
-use reddsa::frost::redpallas as frost;
+#[cfg(feature = "ed448")]
+use frost_ed448 as frost;
 
 use eyre::eyre;
 use message_io::{
