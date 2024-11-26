@@ -1,12 +1,16 @@
 //! Ciphersuite-generic test functions.
 #![allow(clippy::type_complexity)]
 
-use std::{collections::BTreeMap, convert::TryFrom};
+use alloc::collections::BTreeMap;
 
 use crate as frost;
+use crate::round2::SignatureShare;
 use crate::{
-    keys::PublicKeyPackage, Error, Field, Group, Identifier, Signature, SigningKey, VerifyingKey,
+    keys::PublicKeyPackage, Error, Field, Group, Identifier, Signature, SigningKey, SigningPackage,
+    VerifyingKey,
 };
+use alloc::borrow::ToOwned;
+use alloc::vec::Vec;
 use rand_core::{CryptoRng, RngCore};
 
 use crate::Ciphersuite;
@@ -15,7 +19,7 @@ use crate::Ciphersuite;
 pub fn check_zero_key_fails<C: Ciphersuite>() {
     let zero = <<<C as Ciphersuite>::Group as Group>::Field>::zero();
     let encoded_zero = <<<C as Ciphersuite>::Group as Group>::Field>::serialize(&zero);
-    let r = SigningKey::<C>::deserialize(encoded_zero);
+    let r = SigningKey::<C>::deserialize(encoded_zero.as_ref());
     assert_eq!(r, Err(Error::MalformedSigningKey));
 }
 
@@ -47,9 +51,8 @@ pub fn check_share_generation<C: Ciphersuite, R: RngCore + CryptoRng>(mut rng: R
     assert_eq!(
         frost::keys::reconstruct::<C>(&key_packages)
             .unwrap()
-            .serialize()
-            .as_ref(),
-        secret.serialize().as_ref()
+            .serialize(),
+        secret.serialize()
     );
 
     // Test error cases
@@ -221,7 +224,7 @@ pub fn check_sign<C: Ciphersuite + PartialEq, R: RngCore + CryptoRng>(
     // - take one (unused) commitment per signing participant
     let mut signature_shares = BTreeMap::new();
     let message = "message to sign".as_bytes();
-    let signing_package = frost::SigningPackage::new(commitments_map, message);
+    let signing_package = SigningPackage::new(commitments_map, message);
 
     ////////////////////////////////////////////////////////////////////////////
     // Round 2: each participant generates their signature share
@@ -248,18 +251,19 @@ pub fn check_sign<C: Ciphersuite + PartialEq, R: RngCore + CryptoRng>(
     // generates the final signature.
     ////////////////////////////////////////////////////////////////////////////
 
-    #[cfg(not(feature = "cheater-detection"))]
-    let pubkey_package = PublicKeyPackage {
-        header: pubkey_package.header,
-        verifying_shares: BTreeMap::new(),
-        verifying_key: pubkey_package.verifying_key,
-    };
-
     check_aggregate_errors(
         signing_package.clone(),
         signature_shares.clone(),
         pubkey_package.clone(),
     );
+
+    check_verifying_shares(
+        pubkey_package.clone(),
+        signing_package.clone(),
+        signature_shares.clone(),
+    );
+
+    check_verify_signature_share(&pubkey_package, &signing_package, &signature_shares);
 
     // Aggregate (also verifies the signature shares)
     let group_signature = frost::aggregate(&signing_package, &signature_shares, &pubkey_package)?;
@@ -312,6 +316,13 @@ fn check_aggregate_errors<C: Ciphersuite + PartialEq>(
     signature_shares: BTreeMap<frost::Identifier<C>, frost::round2::SignatureShare<C>>,
     pubkey_package: frost::keys::PublicKeyPackage<C>,
 ) {
+    #[cfg(not(feature = "cheater-detection"))]
+    let pubkey_package = PublicKeyPackage {
+        header: pubkey_package.header,
+        verifying_shares: BTreeMap::new(),
+        verifying_key: pubkey_package.verifying_key,
+    };
+
     #[cfg(feature = "cheater-detection")]
     check_aggregate_corrupted_share(
         signing_package.clone(),
@@ -326,15 +337,19 @@ fn check_aggregate_errors<C: Ciphersuite + PartialEq>(
     );
 }
 
+#[cfg(feature = "cheater-detection")]
 fn check_aggregate_corrupted_share<C: Ciphersuite + PartialEq>(
     signing_package: frost::SigningPackage<C>,
     mut signature_shares: BTreeMap<frost::Identifier<C>, frost::round2::SignatureShare<C>>,
     pubkey_package: frost::keys::PublicKeyPackage<C>,
 ) {
+    use crate::round2::SignatureShare;
+
     let one = <<C as Ciphersuite>::Group as Group>::Field::one();
     // Corrupt a share
     let id = *signature_shares.keys().next().unwrap();
-    signature_shares.get_mut(&id).unwrap().share = signature_shares[&id].share + one;
+    *signature_shares.get_mut(&id).unwrap() =
+        SignatureShare::new(signature_shares[&id].to_scalar() + one);
     let e = frost::aggregate(&signing_package, &signature_shares, &pubkey_package).unwrap_err();
     assert_eq!(e.culprit(), Some(id));
     assert_eq!(e, Error::InvalidSignatureShare { culprit: id });
@@ -365,7 +380,7 @@ pub fn check_sign_with_dkg<C: Ciphersuite + PartialEq, R: RngCore + CryptoRng>(
     mut rng: R,
 ) -> (Vec<u8>, Signature<C>, VerifyingKey<C>)
 where
-    C::Group: std::cmp::PartialEq,
+    C::Group: core::cmp::PartialEq,
 {
     ////////////////////////////////////////////////////////////////////////////
     // Key generation, Round 1
@@ -740,7 +755,7 @@ pub fn check_sign_with_missing_identifier<C: Ciphersuite, R: RngCore + CryptoRng
     // - decide what message to sign
     // - take one (unused) commitment per signing participant
     let message = "message to sign".as_bytes();
-    let signing_package = frost::SigningPackage::new(commitments_map, message);
+    let signing_package = SigningPackage::new(commitments_map, message);
 
     ////////////////////////////////////////////////////////////////////////////
     // Round 2: Participant with id_1 signs
@@ -811,7 +826,7 @@ pub fn check_sign_with_incorrect_commitments<C: Ciphersuite, R: RngCore + Crypto
     // - decide what message to sign
     // - take one (unused) commitment per signing participant
     let message = "message to sign".as_bytes();
-    let signing_package = frost::SigningPackage::new(commitments_map, message);
+    let signing_package = SigningPackage::new(commitments_map, message);
 
     ////////////////////////////////////////////////////////////////////////////
     // Round 2: Participant with id_3 signs
@@ -824,4 +839,59 @@ pub fn check_sign_with_incorrect_commitments<C: Ciphersuite, R: RngCore + Crypto
 
     assert!(signature_share.is_err());
     assert!(signature_share == Err(Error::IncorrectCommitment))
+}
+
+// Checks the verifying shares are valid
+//
+// NOTE: If the last verifying share is invalid this test will not detect this.
+// The test is intended for ensuring the correct calculation of verifying shares
+// which is covered in this test
+fn check_verifying_shares<C: Ciphersuite>(
+    pubkeys: PublicKeyPackage<C>,
+    signing_package: SigningPackage<C>,
+    mut signature_shares: BTreeMap<Identifier<C>, SignatureShare<C>>,
+) {
+    let one = <<C as Ciphersuite>::Group as Group>::Field::one();
+
+    // Corrupt last share
+    let id = *signature_shares.keys().last().unwrap();
+    *signature_shares.get_mut(&id).unwrap() =
+        SignatureShare::new(signature_shares[&id].to_scalar() + one);
+
+    let e = frost::aggregate(&signing_package, &signature_shares, &pubkeys).unwrap_err();
+    assert_eq!(e.culprit(), Some(id));
+    assert_eq!(e, Error::InvalidSignatureShare { culprit: id });
+}
+
+// Checks if `verify_signature_share()` works correctly.
+fn check_verify_signature_share<C: Ciphersuite>(
+    pubkeys: &PublicKeyPackage<C>,
+    signing_package: &SigningPackage<C>,
+    signature_shares: &BTreeMap<Identifier<C>, SignatureShare<C>>,
+) {
+    for (identifier, signature_share) in signature_shares {
+        frost::verify_signature_share(
+            *identifier,
+            pubkeys.verifying_shares().get(identifier).unwrap(),
+            signature_share,
+            signing_package,
+            pubkeys.verifying_key(),
+        )
+        .expect("should pass");
+    }
+
+    for (identifier, signature_share) in signature_shares {
+        let one = <<C as Ciphersuite>::Group as Group>::Field::one();
+        // Corrupt  share
+        let signature_share = SignatureShare::new(signature_share.to_scalar() + one);
+
+        frost::verify_signature_share(
+            *identifier,
+            pubkeys.verifying_shares().get(identifier).unwrap(),
+            &signature_share,
+            signing_package,
+            pubkeys.verifying_key(),
+        )
+        .expect_err("should have failed");
+    }
 }

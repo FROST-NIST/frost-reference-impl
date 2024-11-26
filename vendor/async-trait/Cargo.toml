@@ -13,8 +13,14 @@
 edition = "2021"
 rust-version = "1.56"
 name = "async-trait"
-version = "0.1.77"
+version = "0.1.83"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
+build = false
+exclude = ["build.rs"]
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Type erasure for async trait methods"
 documentation = "https://docs.rs/async-trait"
 readme = "README.md"
@@ -31,7 +37,17 @@ rustdoc-args = ["--generate-link-to-definition"]
 targets = ["x86_64-unknown-linux-gnu"]
 
 [lib]
+name = "async_trait"
+path = "src/lib.rs"
 proc-macro = true
+
+[[test]]
+name = "compiletest"
+path = "tests/compiletest.rs"
+
+[[test]]
+name = "test"
+path = "tests/test.rs"
 
 [dependencies.proc-macro2]
 version = "1.0.74"
@@ -43,8 +59,12 @@ version = "1.0.35"
 version = "2.0.46"
 features = [
     "full",
+    "parsing",
+    "printing",
+    "proc-macro",
     "visit-mut",
 ]
+default-features = false
 
 [dev-dependencies.futures]
 version = "0.3.30"

@@ -10,12 +10,18 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2018"
+edition = "2021"
+rust-version = "1.61.0"
 name = "derive-getters"
-version = "0.3.0"
+version = "0.5.0"
 authors = ["Stephan Luther <stephan@kvsari.org>"]
+build = false
+autobins = false
+autoexamples = false
 autotests = false
+autobenches = false
 description = "Simple boilerplate getters generator."
+homepage = "https://sr.ht/~kvsari/derive-getters/"
 readme = "README.md"
 keywords = [
     "getter",
@@ -29,11 +35,21 @@ repository = "https://git.sr.ht/~kvsari/derive-getters"
 
 [lib]
 name = "derive_getters"
+path = "src/lib.rs"
 proc-macro = true
 
 [[test]]
 name = "tests"
 path = "tests/lib.rs"
+
+[[test]]
+name = "all_ref_getters"
+path = "tests/all_ref_getters.rs"
+
+[[test]]
+name = "auto_copy_getters"
+path = "tests/auto_copy_getters.rs"
+required-features = ["auto_copy_getters"]
 
 [dependencies.proc-macro2]
 version = "1.0"
@@ -42,7 +58,7 @@ version = "1.0"
 version = "1.0"
 
 [dependencies.syn]
-version = "1.0"
+version = "2.0"
 features = ["extra-traits"]
 
 [dev-dependencies.serde]
@@ -54,3 +70,7 @@ version = "1.0"
 
 [dev-dependencies.version-sync]
 version = "0.9"
+
+[features]
+auto_copy_getters = []
+default = []

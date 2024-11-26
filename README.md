@@ -22,3 +22,16 @@ users.
   round as the coordinator, opening a socket to communicate with participants.
 - `participant`: a command-line tool that executes a FROST protocol signing
   round as a participant, connecting to the `coordinator` tool.
+
+## Known-Answer Tests
+
+The Known-Answer Tests (KATs) are contained in
+`frost-ed25519/tests/helpers/vectors.json` and
+`frost-ed448/tests/helpers/vectors.json`. They can be checked by running the
+`check_sign_with_test_vectors` test in each of the `frost-ed25519` and
+`frost-ed448` crates:
+
+```
+cargo test -p frost-ed25519 --release --test integration_tests -- --exact check_sign_with_test_vectors
+cargo test -p frost-ed448 --release --test integration_tests -- --exact check_sign_with_test_vectors
+```

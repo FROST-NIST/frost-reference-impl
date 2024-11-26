@@ -1,4 +1,3 @@
-#[cfg(all(test, not(feature = "ed448")))]
 mod tests;
 
 use clap::Parser;
@@ -13,10 +12,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let mut reader = Box::new(io::stdin().lock());
     let mut logger = io::stdout();
-    cli(&args, &mut reader, &mut logger).await?;
+    let r = if args.ciphersuite == "ed25519" {
+        cli::<frost_ed25519::Ed25519Sha512>(&args, &mut reader, &mut logger).await
+    } else if args.ciphersuite == "ed448" {
+        cli::<frost_ed448::Ed448Shake256>(&args, &mut reader, &mut logger).await
+    } else {
+        panic!("invalid ciphersuite");
+    };
 
     // Force process to exit; since socket comms spawn a thread, it will keep
     // running forever. Ideally we should join() the thread but this works for
     // now.
-    std::process::exit(0);
+    match r {
+        Ok(_) => std::process::exit(0),
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    }
 }

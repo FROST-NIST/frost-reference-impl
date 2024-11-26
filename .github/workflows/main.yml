@@ -10,23 +10,14 @@ on:
 
 jobs:
 
-  test_ed25519:
-    name: Test with ed25519
+  test:
+    name: Test
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4.1.1
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test
-
-  test_ed448:
-    name: Test with ed448
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4.1.1
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --features ed448
 
   clippy:
     name: Clippy
@@ -56,13 +47,3 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run rustfmt
         run: cargo fmt --all -- --check
-
-  actionlint:
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4.1.1
-      - uses: reviewdog/action-actionlint@v1.41.0
-        with:
-          level: warning
-          fail_on_error: false

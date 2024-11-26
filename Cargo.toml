@@ -1,12 +1,12 @@
 [workspace]
 members = [
+    "frost-core",
+    "frost-ed25519",
+    "frost-ed448",
     "participant",
     "trusted-dealer",
     "dkg",
-    "coordinator", "tests"
+    "coordinator",
+    "tests"
 ]
-default-members = ["participant",
-    "trusted-dealer",
-    "dkg",
-    "coordinator", "tests"]
 resolver = "2"

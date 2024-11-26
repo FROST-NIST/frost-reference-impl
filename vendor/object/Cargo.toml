@@ -80,5 +80,6 @@ repository = "https://github.com/gimli-rs/object"
 resolver = "2"
 rust-version = "1.60"
 version = "0.32.2"
+
 [package.metadata.docs.rs]
 features = ["doc"]

@@ -1,10 +1,9 @@
-#![cfg(not(feature = "ed448"))]
-
 use std::collections::{BTreeMap, HashMap};
+
+use frost_ed25519 as frost;
 
 use frost::keys::IdentifierList;
 use frost::{aggregate, SigningPackage};
-use frost_ed25519 as frost;
 use participant::round2::{generate_signature, Round2Config};
 use rand::thread_rng;
 

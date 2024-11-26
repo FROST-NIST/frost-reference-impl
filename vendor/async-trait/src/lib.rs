@@ -316,7 +316,7 @@
 //! let object = &value as &dyn ObjectSafe;
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/async-trait/0.1.77")]
+#![doc(html_root_url = "https://docs.rs/async-trait/0.1.83")]
 #![allow(
     clippy::default_trait_access,
     clippy::doc_markdown,
@@ -327,7 +327,8 @@
     clippy::module_name_repetitions,
     clippy::shadow_unrelated,
     clippy::similar_names,
-    clippy::too_many_lines
+    clippy::too_many_lines,
+    clippy::trivially_copy_pass_by_ref
 )]
 
 extern crate proc_macro;

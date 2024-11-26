@@ -3,10 +3,7 @@ pub mod socket;
 
 use async_trait::async_trait;
 
-#[cfg(not(feature = "ed448"))]
-use frost_ed25519 as frost;
-#[cfg(feature = "ed448")]
-use frost_ed448 as frost;
+use frost_core::{self as frost, Ciphersuite};
 
 use std::{
     error::Error,
@@ -17,33 +14,37 @@ use frost::{
     round1::SigningCommitments,
     round2::SignatureShare,
     serde::{self, Deserialize, Serialize},
-    Identifier, SigningPackage,
+    Identifier,
 };
 
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "self::serde")]
+#[serde(bound = "C: Ciphersuite")]
 #[allow(clippy::large_enum_variant)]
-pub enum Message {
+pub enum Message<C: Ciphersuite> {
     IdentifiedCommitments {
-        identifier: Identifier,
-        commitments: SigningCommitments,
+        identifier: Identifier<C>,
+        commitments: SigningCommitments<C>,
     },
-    SigningPackage(SigningPackage),
-    SignatureShare(SignatureShare),
+    SigningPackage {
+        signing_package: frost::SigningPackage<C>,
+    },
+    SignatureShare(SignatureShare<C>),
 }
 
 #[async_trait(?Send)]
-pub trait Comms {
+pub trait Comms<C: Ciphersuite> {
     async fn get_signing_package(
         &mut self,
         input: &mut dyn BufRead,
         output: &mut dyn Write,
-        commitments: SigningCommitments,
-        identifier: Identifier,
-    ) -> Result<SigningPackage, Box<dyn Error>>;
+        commitments: SigningCommitments<C>,
+        identifier: Identifier<C>,
+    ) -> Result<frost::SigningPackage<C>, Box<dyn Error>>;
 
     async fn send_signature_share(
         &mut self,
-        signature_share: SignatureShare,
+        identifier: Identifier<C>,
+        signature_share: SignatureShare<C>,
     ) -> Result<(), Box<dyn Error>>;
 }

@@ -1,8 +1,10 @@
 //! FROST Round 1 functionality and types
 
-use std::{
+use alloc::{
     collections::BTreeMap,
     fmt::{self, Debug},
+    string::ToString,
+    vec::Vec,
 };
 
 use derive_getters::Getters;
@@ -12,14 +14,13 @@ use hex::FromHex;
 use rand_core::{CryptoRng, RngCore};
 use zeroize::Zeroize;
 
-use crate as frost;
 use crate::{
-    serialization::{Deserialize, Serialize},
-    Ciphersuite, Element, Error, Field, Group, Header, Scalar,
+    serialization::{SerializableElement, SerializableScalar},
+    Ciphersuite, Element, Error, Field, Group, Header,
 };
 
-#[cfg(feature = "serde")]
-use crate::serialization::{ElementSerialization, ScalarSerialization};
+#[cfg(feature = "serialization")]
+use crate::serialization::{Deserialize, Serialize};
 
 use super::{keys::SigningShare, Identifier};
 
@@ -27,9 +28,8 @@ use super::{keys::SigningShare, Identifier};
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(bound = "C: Ciphersuite"))]
-#[cfg_attr(feature = "serde", serde(try_from = "ScalarSerialization<C>"))]
-#[cfg_attr(feature = "serde", serde(into = "ScalarSerialization<C>"))]
-pub struct Nonce<C: Ciphersuite>(pub(super) Scalar<C>);
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct Nonce<C: Ciphersuite>(pub(super) SerializableScalar<C>);
 
 impl<C> Nonce<C>
 where
@@ -43,7 +43,7 @@ where
     ///
     /// An implementation of `nonce_generate(secret)` from the [spec].
     ///
-    /// [spec]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#name-nonce-generation
+    /// [spec]: https://datatracker.ietf.org/doc/html/rfc9591#name-nonce-generation
     pub fn new<R>(secret: &SigningShare<C>, rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore,
@@ -54,35 +54,41 @@ where
         Self::nonce_generate_from_random_bytes(secret, random_bytes)
     }
 
+    fn from_scalar(scalar: <<<C as Ciphersuite>::Group as Group>::Field as Field>::Scalar) -> Self {
+        Self(SerializableScalar(scalar))
+    }
+
+    pub(crate) fn to_scalar(
+        self,
+    ) -> <<<C as Ciphersuite>::Group as Group>::Field as Field>::Scalar {
+        self.0 .0
+    }
+
     /// Generates a nonce from the given random bytes.
     /// This function allows testing and MUST NOT be made public.
     pub(crate) fn nonce_generate_from_random_bytes(
         secret: &SigningShare<C>,
         random_bytes: [u8; 32],
     ) -> Self {
-        let secret_enc = <<C::Group as Group>::Field>::serialize(&secret.0);
+        let secret_enc = secret.0.serialize();
 
         let input: Vec<u8> = random_bytes
             .iter()
-            .chain(secret_enc.as_ref().iter())
+            .chain(secret_enc.iter())
             .cloned()
             .collect();
 
-        Self(C::H3(input.as_slice()))
+        Self::from_scalar(C::H3(input.as_slice()))
     }
 
     /// Deserialize [`Nonce`] from bytes
-    pub fn deserialize(
-        bytes: <<C::Group as Group>::Field as Field>::Serialization,
-    ) -> Result<Self, Error<C>> {
-        <<C::Group as Group>::Field>::deserialize(&bytes)
-            .map(|scalar| Self(scalar))
-            .map_err(|e| e.into())
+    pub fn deserialize(bytes: &[u8]) -> Result<Self, Error<C>> {
+        Ok(Self(SerializableScalar::deserialize(bytes)?))
     }
 
     /// Serialize [`Nonce`] to bytes
-    pub fn serialize(&self) -> <<C::Group as Group>::Field as Field>::Serialization {
-        <<C::Group as Group>::Field>::serialize(&self.0)
+    pub fn serialize(&self) -> Vec<u8> {
+        self.0.serialize()
     }
 }
 
@@ -91,7 +97,7 @@ where
     C: Ciphersuite,
 {
     fn zeroize(&mut self) {
-        *self = Nonce(<<C::Group as Group>::Field>::zero());
+        *self = Nonce::from_scalar(<<C::Group as Group>::Field>::zero());
     }
 }
 
@@ -104,32 +110,7 @@ where
 
     fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
         let v: Vec<u8> = FromHex::from_hex(hex).map_err(|_| "invalid hex")?;
-        match v.try_into() {
-            Ok(bytes) => Self::deserialize(bytes).map_err(|_| "malformed nonce encoding"),
-            Err(_) => Err("malformed nonce encoding"),
-        }
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<C> TryFrom<ScalarSerialization<C>> for Nonce<C>
-where
-    C: Ciphersuite,
-{
-    type Error = Error<C>;
-
-    fn try_from(value: ScalarSerialization<C>) -> Result<Self, Self::Error> {
-        Self::deserialize(value.0)
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<C> From<Nonce<C>> for ScalarSerialization<C>
-where
-    C: Ciphersuite,
-{
-    fn from(value: Nonce<C>) -> Self {
-        Self(value.serialize())
+        Self::deserialize(&v).map_err(|_| "malformed nonce encoding")
     }
 }
 
@@ -137,46 +118,29 @@ where
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(bound = "C: Ciphersuite"))]
-#[cfg_attr(feature = "serde", serde(try_from = "ElementSerialization<C>"))]
-#[cfg_attr(feature = "serde", serde(into = "ElementSerialization<C>"))]
-pub struct NonceCommitment<C: Ciphersuite>(pub(super) Element<C>);
+pub struct NonceCommitment<C: Ciphersuite>(pub(super) SerializableElement<C>);
 
 impl<C> NonceCommitment<C>
 where
     C: Ciphersuite,
 {
+    /// Create a new [`NonceCommitment`] from an [`Element`]
+    pub(crate) fn new(value: Element<C>) -> Self {
+        Self(SerializableElement(value))
+    }
+
+    pub(crate) fn value(&self) -> Element<C> {
+        self.0 .0
+    }
+
     /// Deserialize [`NonceCommitment`] from bytes
-    pub fn deserialize(bytes: <C::Group as Group>::Serialization) -> Result<Self, Error<C>> {
-        <C::Group>::deserialize(&bytes)
-            .map(|element| Self(element))
-            .map_err(|e| e.into())
+    pub fn deserialize(bytes: &[u8]) -> Result<Self, Error<C>> {
+        Ok(Self(SerializableElement::deserialize(bytes)?))
     }
 
     /// Serialize [`NonceCommitment`] to bytes
-    pub fn serialize(&self) -> <C::Group as Group>::Serialization {
-        <C::Group>::serialize(&self.0)
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<C> TryFrom<ElementSerialization<C>> for NonceCommitment<C>
-where
-    C: Ciphersuite,
-{
-    type Error = Error<C>;
-
-    fn try_from(value: ElementSerialization<C>) -> Result<Self, Self::Error> {
-        Self::deserialize(value.0)
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<C> From<NonceCommitment<C>> for ElementSerialization<C>
-where
-    C: Ciphersuite,
-{
-    fn from(value: NonceCommitment<C>) -> Self {
-        Self(value.serialize())
+    pub fn serialize(&self) -> Result<Vec<u8>, Error<C>> {
+        self.0.serialize()
     }
 }
 
@@ -186,7 +150,12 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_tuple("NonceCommitment")
-            .field(&hex::encode(self.serialize()))
+            .field(
+                &self
+                    .serialize()
+                    .map(hex::encode)
+                    .unwrap_or("<invalid>".to_string()),
+            )
             .finish()
     }
 }
@@ -205,7 +174,7 @@ where
     C: Ciphersuite,
 {
     fn from(nonce: &Nonce<C>) -> Self {
-        Self(<C::Group>::generator() * nonce.0)
+        Self::new(<C::Group>::generator() * nonce.to_scalar())
     }
 }
 
@@ -218,12 +187,7 @@ where
 
     fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
         let v: Vec<u8> = FromHex::from_hex(hex).map_err(|_| "invalid hex")?;
-        match v.try_into() {
-            Ok(bytes) => {
-                Self::deserialize(bytes).map_err(|_| "malformed nonce commitment encoding")
-            }
-            Err(_) => Err("malformed nonce commitment encoding"),
-        }
+        Self::deserialize(&v).map_err(|_| "malformed nonce commitment encoding")
     }
 }
 
@@ -295,7 +259,7 @@ impl<C> Debug for SigningNonces<C>
 where
     C: Ciphersuite,
 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SigningNonces")
             .field("hiding", &"<redacted>")
             .field("binding", &"<redacted>")
@@ -350,16 +314,17 @@ where
         }
     }
 
-    /// Computes the [signature commitment share] from these round one signing commitments.
+    /// Computes the [commitment share] from these round one signing commitments.
     ///
-    /// [signature commitment share]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#name-signature-share-verificatio
+    /// [commitment share]: https://datatracker.ietf.org/doc/html/rfc9591#name-signature-share-aggregation
+    #[cfg(any(feature = "internals", feature = "cheater-detection"))]
     #[cfg_attr(feature = "internals", visibility::make(pub))]
     #[cfg_attr(docsrs, doc(cfg(feature = "internals")))]
     pub(super) fn to_group_commitment_share(
         self,
-        binding_factor: &frost::BindingFactor<C>,
+        binding_factor: &crate::BindingFactor<C>,
     ) -> GroupCommitmentShare<C> {
-        GroupCommitmentShare::<C>(self.hiding.0 + (self.binding.0 * binding_factor.0))
+        GroupCommitmentShare::<C>(self.hiding.value() + (self.binding.value() * binding_factor.0))
     }
 }
 
@@ -403,19 +368,19 @@ pub struct GroupCommitmentShare<C: Ciphersuite>(pub(super) Element<C>);
 /// Returns a byte string containing the serialized representation of the
 /// commitment list.
 ///
-/// [`encode_group_commitment_list()`]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#name-list-operations
+/// [`encode_group_commitment_list()`]: https://datatracker.ietf.org/doc/html/rfc9591#name-list-operations
 pub(super) fn encode_group_commitments<C: Ciphersuite>(
     signing_commitments: &BTreeMap<Identifier<C>, SigningCommitments<C>>,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, Error<C>> {
     let mut bytes = vec![];
 
     for (item_identifier, item) in signing_commitments {
         bytes.extend_from_slice(item_identifier.serialize().as_ref());
-        bytes.extend_from_slice(<C::Group>::serialize(&item.hiding.0).as_ref());
-        bytes.extend_from_slice(<C::Group>::serialize(&item.binding.0).as_ref());
+        bytes.extend_from_slice(<C::Group>::serialize(&item.hiding.value())?.as_ref());
+        bytes.extend_from_slice(<C::Group>::serialize(&item.binding.value())?.as_ref());
     }
 
-    bytes
+    Ok(bytes)
 }
 
 /// Done once by each participant, to generate _their_ nonces and commitments
@@ -457,7 +422,7 @@ where
 /// Generates the signing nonces and commitments to be used in the signing
 /// operation.
 ///
-/// [`commit`]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#name-round-one-commitment
+/// [`commit`]: https://datatracker.ietf.org/doc/html/rfc9591#name-round-one-commitment
 pub fn commit<C, R>(
     secret: &SigningShare<C>,
     rng: &mut R,

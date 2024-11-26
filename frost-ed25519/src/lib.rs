@@ -1,3 +1,4 @@
+#![cfg_attr(not(feature = "std"), no_std)]
 #![allow(non_snake_case)]
 #![deny(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
@@ -5,7 +6,9 @@
 #![doc = include_str!("../README.md")]
 #![doc = document_features::document_features!()]
 
-use std::collections::BTreeMap;
+extern crate alloc;
+
+use alloc::collections::BTreeMap;
 
 use curve25519_dalek::{
     constants::ED25519_BASEPOINT_POINT,
@@ -23,7 +26,9 @@ use frost_core as frost;
 mod tests;
 
 // Re-exports in our public API
-pub use frost_core::{serde, Ciphersuite, Field, FieldError, Group, GroupError};
+#[cfg(feature = "serde")]
+pub use frost_core::serde;
+pub use frost_core::{Ciphersuite, Field, FieldError, Group, GroupError};
 pub use rand_core;
 
 /// An error.
@@ -99,8 +104,11 @@ impl Group for Ed25519Group {
         ED25519_BASEPOINT_POINT
     }
 
-    fn serialize(element: &Self::Element) -> Self::Serialization {
-        element.compress().to_bytes()
+    fn serialize(element: &Self::Element) -> Result<Self::Serialization, GroupError> {
+        if *element == Self::identity() {
+            return Err(GroupError::InvalidIdentityElement);
+        }
+        Ok(element.compress().to_bytes())
     }
 
     fn deserialize(buf: &Self::Serialization) -> Result<Self::Element, GroupError> {
@@ -148,7 +156,7 @@ fn hash_to_scalar(inputs: &[&[u8]]) -> Scalar {
 
 /// Context string from the ciphersuite in the [spec]
 ///
-/// [spec]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#section-6.1-1
+/// [spec]: https://datatracker.ietf.org/doc/html/rfc9591#section-6.1-1
 const CONTEXT_STRING: &str = "FROST-ED25519-SHA512-v1";
 
 /// An implementation of the FROST(Ed25519, SHA-512) ciphersuite.
@@ -166,35 +174,35 @@ impl Ciphersuite for Ed25519Sha512 {
 
     /// H1 for FROST(Ed25519, SHA-512)
     ///
-    /// [spec]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#section-6.1-2.2.2.1
+    /// [spec]: https://datatracker.ietf.org/doc/html/rfc9591#section-6.1-2.4.2.2
     fn H1(m: &[u8]) -> <<Self::Group as Group>::Field as Field>::Scalar {
         hash_to_scalar(&[CONTEXT_STRING.as_bytes(), b"rho", m])
     }
 
     /// H2 for FROST(Ed25519, SHA-512)
     ///
-    /// [spec]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#section-6.1-2.2.2.2
+    /// [spec]: https://datatracker.ietf.org/doc/html/rfc9591#section-6.1-2.4.2.4
     fn H2(m: &[u8]) -> <<Self::Group as Group>::Field as Field>::Scalar {
         hash_to_scalar(&[m])
     }
 
     /// H3 for FROST(Ed25519, SHA-512)
     ///
-    /// [spec]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#section-6.1-2.2.2.3
+    /// [spec]: https://datatracker.ietf.org/doc/html/rfc9591#section-6.1-2.4.2.6
     fn H3(m: &[u8]) -> <<Self::Group as Group>::Field as Field>::Scalar {
         hash_to_scalar(&[CONTEXT_STRING.as_bytes(), b"nonce", m])
     }
 
     /// H4 for FROST(Ed25519, SHA-512)
     ///
-    /// [spec]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#section-6.1-2.2.2.4
+    /// [spec]: https://datatracker.ietf.org/doc/html/rfc9591#section-6.1-2.4.2.8
     fn H4(m: &[u8]) -> Self::HashOutput {
         hash_to_array(&[CONTEXT_STRING.as_bytes(), b"msg", m])
     }
 
     /// H5 for FROST(Ed25519, SHA-512)
     ///
-    /// [spec]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#section-6.1-2.2.2.5
+    /// [spec]: https://datatracker.ietf.org/doc/html/rfc9591#section-6.1-2.4.2.10
     fn H5(m: &[u8]) -> Self::HashOutput {
         hash_to_array(&[CONTEXT_STRING.as_bytes(), b"com", m])
     }
@@ -227,8 +235,6 @@ pub type Identifier = frost::Identifier<E>;
 
 /// FROST(Ed25519, SHA-512) keys, key generation, key shares.
 pub mod keys {
-    use std::collections::BTreeMap;
-
     use super::*;
 
     /// The identifier list to use when generating key shares.

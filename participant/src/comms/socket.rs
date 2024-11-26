@@ -1,10 +1,8 @@
 //! Socket implementation of the Comms trait, using message-io.
 
 use async_trait::async_trait;
-#[cfg(not(feature = "ed448"))]
-use frost_ed25519 as frost;
-#[cfg(feature = "ed448")]
-use frost_ed448 as frost;
+
+use frost_core::{self as frost, Ciphersuite};
 
 use eyre::eyre;
 use message_io::{
@@ -13,24 +11,29 @@ use message_io::{
 };
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use frost::{round1::SigningCommitments, round2::SignatureShare, Identifier, SigningPackage};
+use frost::{round1::SigningCommitments, round2::SignatureShare, Identifier};
 
 use std::{
     error::Error,
     io::{BufRead, Write},
+    marker::PhantomData,
 };
 
 use super::{Comms, Message};
-use crate::args::Args;
+use crate::args::ProcessedArgs;
 
-pub struct SocketComms {
+pub struct SocketComms<C: Ciphersuite> {
     input_rx: Receiver<(Endpoint, Vec<u8>)>,
     endpoint: Endpoint,
     handler: NodeHandler<()>,
+    _phantom: PhantomData<C>,
 }
 
-impl SocketComms {
-    pub fn new(args: &Args) -> Self {
+impl<C> SocketComms<C>
+where
+    C: Ciphersuite,
+{
+    pub fn new(args: &ProcessedArgs<C>) -> Self {
         let (handler, listener) = node::split::<()>();
         let addr = format!("{}:{}", args.ip, args.port);
         let (tx, rx) = mpsc::channel(2000); // Don't need to receive the endpoint. Change this
@@ -44,6 +47,7 @@ impl SocketComms {
             input_rx: rx,
             endpoint,
             handler,
+            _phantom: Default::default(),
         };
 
         // TODO: save handle
@@ -64,9 +68,7 @@ impl SocketComms {
             } // Tcp or Ws
             NetEvent::Message(endpoint, data) => {
                 println!("Received: {}", String::from_utf8_lossy(data));
-                let _ = input_tx
-                    .try_send((endpoint, data.to_vec()))
-                    .map_err(|e| println!("{}", e));
+                input_tx.try_send((endpoint, data.to_vec())).unwrap();
             }
             NetEvent::Disconnected(endpoint) => {
                 println!("Disconnected from server at {}", endpoint)
@@ -76,16 +78,19 @@ impl SocketComms {
 }
 
 #[async_trait(?Send)]
-impl Comms for SocketComms {
+impl<C> Comms<C> for SocketComms<C>
+where
+    C: Ciphersuite + 'static,
+{
     async fn get_signing_package(
         &mut self,
         _input: &mut dyn BufRead,
         _output: &mut dyn Write,
-        commitments: SigningCommitments,
-        identifier: Identifier,
-    ) -> Result<SigningPackage, Box<dyn Error>> {
+        commitments: SigningCommitments<C>,
+        identifier: Identifier<C>,
+    ) -> Result<frost::SigningPackage<C>, Box<dyn Error>> {
         // Send Commitments to Coordinator
-        let data = serde_json::to_vec(&Message::IdentifiedCommitments {
+        let data = serde_json::to_vec(&Message::<C>::IdentifiedCommitments {
             identifier,
             commitments,
         })?;
@@ -98,8 +103,8 @@ impl Comms for SocketComms {
             .await
             .ok_or(eyre!("Did not receive signing package!"))?;
 
-        let message: Message = serde_json::from_slice(&data)?;
-        if let Message::SigningPackage(signing_package) = message {
+        let message: Message<C> = serde_json::from_slice(&data)?;
+        if let Message::SigningPackage { signing_package } = message {
             Ok(signing_package)
         } else {
             Err(eyre!("Expected SigningPackage message"))?
@@ -108,7 +113,8 @@ impl Comms for SocketComms {
 
     async fn send_signature_share(
         &mut self,
-        signature_share: SignatureShare,
+        _identifier: Identifier<C>,
+        signature_share: SignatureShare<C>,
     ) -> Result<(), Box<dyn Error>> {
         // Send signature shares to Coordinator
         let data = serde_json::to_vec(&Message::SignatureShare(signature_share))?;

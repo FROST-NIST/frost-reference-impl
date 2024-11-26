@@ -7,8 +7,6 @@
 //! of caller code (which must assemble a batch of signatures across
 //! work-items), and loss of the ability to easily pinpoint failing signatures.
 
-use std::iter::once;
-
 use rand_core::{CryptoRng, RngCore};
 
 use crate::{scalar_mul::VartimeMultiscalarMul, Ciphersuite, Element, *};
@@ -25,16 +23,20 @@ pub struct Item<C: Ciphersuite> {
     c: Challenge<C>,
 }
 
-impl<'msg, C, M> From<(VerifyingKey<C>, Signature<C>, &'msg M)> for Item<C>
+impl<C> Item<C>
 where
     C: Ciphersuite,
-    M: AsRef<[u8]>,
 {
-    fn from((vk, sig, msg): (VerifyingKey<C>, Signature<C>, &'msg M)) -> Self {
+    /// Create a new batch [`Item`] from a [`VerifyingKey`], [`Signature`]
+    /// and a message to be verified.
+    pub fn new<M>(vk: VerifyingKey<C>, sig: Signature<C>, msg: M) -> Result<Self, Error<C>>
+    where
+        M: AsRef<[u8]>,
+    {
         // Compute c now to avoid dependency on the msg lifetime.
-        let c = crate::challenge(&sig.R, &vk, msg.as_ref());
+        let c = crate::challenge(&sig.R, &vk, msg.as_ref())?;
 
-        Self { vk, sig, c }
+        Ok(Self { vk, sig, c })
     }
 }
 
@@ -129,10 +131,10 @@ where
             Rs.push(R);
 
             VK_coeffs.push(<<C::Group as Group>::Field>::zero() + (blind * item.c.0));
-            VKs.push(item.vk.element);
+            VKs.push(item.vk.to_element());
         }
 
-        let scalars = once(&P_coeff_acc)
+        let scalars = core::iter::once(&P_coeff_acc)
             .chain(VK_coeffs.iter())
             .chain(R_coeffs.iter());
 
@@ -155,6 +157,8 @@ where
     C: Ciphersuite,
 {
     fn default() -> Self {
-        Self { signatures: vec![] }
+        Self {
+            signatures: Vec::new(),
+        }
     }
 }

@@ -9,29 +9,34 @@
 //! - Each participant should call [`sign`] and send the resulting
 //!   [`frost::round2::SignatureShare`] back to the Coordinator;
 //! - The Coordinator should then call [`aggregate`].
+#![cfg_attr(not(feature = "std"), no_std)]
 #![allow(non_snake_case)]
+
+extern crate alloc;
 
 #[cfg(any(test, feature = "test-impl"))]
 pub mod tests;
 
-use std::collections::BTreeMap;
+use alloc::{collections::BTreeMap, string::ToString, vec::Vec};
 
 use derive_getters::Getters;
 pub use frost_core;
 
+#[cfg(feature = "serialization")]
+use frost_core::SigningPackage;
 use frost_core::{
     self as frost,
     keys::{KeyPackage, PublicKeyPackage, SigningShare, VerifyingShare},
-    Ciphersuite, Error, Field, Group, Scalar, SigningPackage, VerifyingKey,
+    serialization::SerializableScalar,
+    Ciphersuite, Error, Field, Group, Scalar, VerifyingKey,
 };
 
 #[cfg(feature = "serde")]
 use frost_core::serde;
-#[cfg(feature = "serde")]
-use frost_core::serialization::ScalarSerialization;
 
 // When pulled into `reddsa`, that has its own sibling `rand_core` import.
 // For the time being, we do not re-export this `rand_core`.
+#[cfg(feature = "serialization")]
 use rand_core::{CryptoRng, RngCore};
 
 /// Randomize the given key type for usage in a FROST signing with re-randomized keys,
@@ -69,7 +74,7 @@ impl<C: Ciphersuite> Randomize<C> for KeyPackage<C> {
 
         let signing_share = self.signing_share();
         let randomized_signing_share =
-            SigningShare::new(signing_share.to_scalar() + randomized_params.randomizer.0);
+            SigningShare::new(signing_share.to_scalar() + randomized_params.randomizer.to_scalar());
 
         let randomized_key_package = KeyPackage::new(
             *self.identifier(),
@@ -155,10 +160,18 @@ where
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(bound = "C: Ciphersuite"))]
-#[cfg_attr(feature = "serde", serde(try_from = "ScalarSerialization<C>"))]
-#[cfg_attr(feature = "serde", serde(into = "ScalarSerialization<C>"))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 #[cfg_attr(feature = "serde", serde(crate = "self::serde"))]
-pub struct Randomizer<C: Ciphersuite>(Scalar<C>);
+pub struct Randomizer<C: Ciphersuite>(SerializableScalar<C>);
+
+impl<C> Randomizer<C>
+where
+    C: Ciphersuite,
+{
+    pub(crate) fn to_scalar(self) -> Scalar<C> {
+        self.0 .0
+    }
+}
 
 impl<C> Randomizer<C>
 where
@@ -169,6 +182,7 @@ where
     /// The [`SigningPackage`] must be the signing package being used in the
     /// current FROST signing run. It is hashed into the randomizer calculation,
     /// which binds it to that specific package.
+    #[cfg(feature = "serialization")]
     pub fn new<R: RngCore + CryptoRng>(
         mut rng: R,
         signing_package: &SigningPackage<C>,
@@ -179,6 +193,7 @@ where
 
     /// Create a final Randomizer from a random Randomizer and a SigningPackage.
     /// Function refactored out for testing, should always be private.
+    #[cfg(feature = "serialization")]
     fn from_randomizer_and_signing_package(
         rng_randomizer: <<<C as Ciphersuite>::Group as Group>::Field as Field>::Scalar,
         signing_package: &SigningPackage<C>,
@@ -194,7 +209,7 @@ where
             .concat(),
         )
         .ok_or(Error::SerializationError)?;
-        Ok(Self(randomizer))
+        Ok(Self(SerializableScalar(randomizer)))
     }
 }
 
@@ -209,43 +224,29 @@ where
     /// reasons with specifications on how the randomizer must be generated. Use
     /// [`Randomizer::new()`] instead.
     pub fn from_scalar(scalar: Scalar<C>) -> Self {
-        Self(scalar)
+        Self(SerializableScalar(scalar))
     }
 
     /// Serialize the identifier using the ciphersuite encoding.
-    pub fn serialize(&self) -> <<C::Group as Group>::Field as Field>::Serialization {
-        <<C::Group as Group>::Field>::serialize(&self.0)
+    pub fn serialize(&self) -> Vec<u8> {
+        self.0.serialize()
     }
 
     /// Deserialize an Identifier from a serialized buffer.
     /// Returns an error if it attempts to deserialize zero.
-    pub fn deserialize(
-        buf: &<<C::Group as Group>::Field as Field>::Serialization,
-    ) -> Result<Self, Error<C>> {
-        let scalar = <<C::Group as Group>::Field>::deserialize(buf)?;
-        Ok(Self(scalar))
+    pub fn deserialize(buf: &[u8]) -> Result<Self, Error<C>> {
+        Ok(Self(SerializableScalar::deserialize(buf)?))
     }
 }
 
-#[cfg(feature = "serde")]
-impl<C> TryFrom<ScalarSerialization<C>> for Randomizer<C>
+impl<C> core::fmt::Debug for Randomizer<C>
 where
     C: Ciphersuite,
 {
-    type Error = Error<C>;
-
-    fn try_from(value: ScalarSerialization<C>) -> Result<Self, Self::Error> {
-        Self::deserialize(&value.0)
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<C> From<Randomizer<C>> for ScalarSerialization<C>
-where
-    C: Ciphersuite,
-{
-    fn from(value: Randomizer<C>) -> Self {
-        Self(value.serialize())
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("Randomizer")
+            .field(&hex::encode(self.0.serialize()))
+            .finish()
     }
 }
 
@@ -266,6 +267,7 @@ where
 {
     /// Create a new [`RandomizedParams`] for the given [`VerifyingKey`] and
     /// the given `participants`.
+    #[cfg(feature = "serialization")]
     pub fn new<R: RngCore + CryptoRng>(
         group_verifying_key: &VerifyingKey<C>,
         signing_package: &SigningPackage<C>,
@@ -291,7 +293,7 @@ where
         group_verifying_key: &VerifyingKey<C>,
         randomizer: Randomizer<C>,
     ) -> Self {
-        let randomizer_element = <C::Group as Group>::generator() * randomizer.0;
+        let randomizer_element = <C::Group as Group>::generator() * randomizer.to_scalar();
         let verifying_key_element = group_verifying_key.to_element();
         let randomized_verifying_key_element = verifying_key_element + randomizer_element;
         let randomized_verifying_key = VerifyingKey::<C>::new(randomized_verifying_key_element);
@@ -301,5 +303,23 @@ where
             randomizer_element,
             randomized_verifying_key,
         }
+    }
+}
+
+impl<C> core::fmt::Debug for RandomizedParams<C>
+where
+    C: Ciphersuite,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("RandomizedParams")
+            .field("randomizer", &self.randomizer)
+            .field(
+                "randomizer_element",
+                &<C::Group as Group>::serialize(&self.randomizer_element)
+                    .map(hex::encode)
+                    .unwrap_or("<invalid>".to_string()),
+            )
+            .field("randomized_verifying_key", &self.randomized_verifying_key)
+            .finish()
     }
 }
