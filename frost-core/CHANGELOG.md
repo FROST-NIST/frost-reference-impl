@@ -4,10 +4,75 @@ Entries are listed in reverse chronological order.
 
 ## Unreleased
 
+## 2.0.0
+
+* Updated docs
+* Added missing `derive(Getters)` for `dkg::{round1, round2}`
+* Added `internal` feature for `validate_num_of_signers`
+* Added refresh share functionality for trusted dealer:
+  `frost_core::keys::refresh::{compute_refreshing_shares, refresh_share}`
+* Added a `'static` bound to the `Ciphersuite` trait. This is a breaking change,
+  but it's likely to not require any code changes since most ciphersuite
+  implementations are probably just empty structs. The bound makes it possible
+  to use `frost_core::Error<C>` in `Box<dyn std::error::Error>`.
+* Added getters to `round1::SecretPackage` and `round2::SecretPackage`.
+* Added a `frost_core::verify_signature_share()` function which allows verifying
+  individual signature shares. This is not required for regular FROST usage but
+  might useful in certain situations where it is desired to verify each
+  individual signature share before aggregating the signature.
+
+## 2.0.0-rc.0
+
+* Changed the `deserialize()` function of Elements and structs containing
+  Elements to return an error if the element is the identity. This is a
+  requirement in the FROST specification that wasn't being followed. We are not
+  aware of any possible security issues that could be caused by this; in the
+  unlikely case that the identity was being serialized, this would be caught by
+  deserialization methods. However, we consider this change the right thing to
+  do as a defense-in-depth mechanism. This entails the following changes:
+  * `Group::serialize()` now returns an error. When implementing it, you must
+    return an error if it attempts to serialize the identity.
+  * `VerifyingShare::serialize()`, `CoefficientCommitment::serialize()`,
+    `VerifiableSecretSharingCommitment::serialize()`,
+    `NonceCommitment::serialize()`, `Signature::serialize()`,
+    `VerifyingKey::serialize()` can now all return an error.
+* Changed the `serialize()` and `deserialize()` methods of all Scalar- and
+  Element-wrapping structs; instead of taking or returning a
+  `Field::Serialization` or `Element::Serialization` trait (which are usually
+  defined by ciphersuites as arrays of specific sizes), they simply respectively
+  take `&[u8]` and return `Vec<u8>`, exactly as the other structs, which should
+  greatly simplify non-serde serialization code. You can port existing code with
+  e.g. `x.serialize().as_ref()` -> `x.serialize()` and
+  `X::deserialize(bytes.try_into().unwrap())` -> `X::deserialize(&bytes)`.
+* Removed the `ops::{Mul, MulAssign, Sub}` implementation for `Identifier`.
+  These were being used internally, but library users shouldn't need to use them.
+  If you have low-level code that relied on it, use `Identifier::{new,
+  to_scalar}` to handle the underlying scalar.
+* Removed `batch::Item::into()` which created a batch Item from a triple of
+  VerifyingKey, Signature and message. Use the new `batch::Item::new()` instead
+  (which can return an error).
+* Add no-std support to all crates except frost-ed448. To use, do not enable the
+  `std` feature that is enabled by default (i.e. use `default-features =
+  false`); Note that it always links to an external `alloc` crate (i.e. there is
+  no `alloc` feature). When disabling `std`, the only impact in the API is that
+  `Error` will no longer implement the `std::error::Error` trait. This is a
+  breaking change if you are disabling default features but rely on `Error`
+  implementing `std::error::Error`. In that case, simply enable the `std`
+  feature.
+* Fixed `no-default-features`, previously it wouldn't compile.
+* Fixed some feature handling that would include unneeded dependencies in some
+  cases.
+
+## 1.0.0
+
 * Exposed the `SigningKey::from_scalar()` and `to_scalar()` methods. This
   helps interoperability with other implementations.
-
-## Released
+* Exposed the `SigningNonces::from_nonces()` method to allow it to be
+  deserialized.
+* Fixed bug that prevented deserialization with in some cases (e.g. JSON
+  containing escape codes).
+* Added `new()` methods for `VerifirableSecretSharingCommitment` and
+  `CoefficientCommitment`.
 
 ## 1.0.0-rc.0
 

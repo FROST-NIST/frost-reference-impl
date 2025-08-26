@@ -1,60 +1,31 @@
-#[cfg(not(feature = "ed448"))]
-use frost_ed25519 as frost;
-#[cfg(feature = "ed448")]
-use frost_ed448 as frost;
+use frost_core::{self as frost, Ciphersuite};
 
 use frost::{round1::SigningCommitments, Identifier, SigningPackage};
 
-use std::{
-    collections::BTreeMap,
-    fs,
-    io::{BufRead, Write},
-};
+use std::{collections::BTreeMap, io::Write};
 
-use crate::args::Args;
+use crate::args::ProcessedArgs;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct CommitmentsConfig {
+pub struct CommitmentsConfig<C: Ciphersuite> {
     pub message: Vec<u8>,
-    pub signer_commitments: BTreeMap<Identifier, SigningCommitments>,
+    pub signer_commitments: BTreeMap<Identifier<C>, SigningCommitments<C>>,
 }
 
-pub async fn step_2(
-    args: &Args,
-    input: &mut impl BufRead,
+pub fn step_2<C: Ciphersuite>(
+    args: &ProcessedArgs<C>,
     logger: &mut dyn Write,
-    commitments: BTreeMap<Identifier, SigningCommitments>,
-) -> Result<SigningPackage, Box<dyn std::error::Error>> {
-    let signing_package = request_message(args, input, logger, commitments)?;
+    commitments: BTreeMap<Identifier<C>, SigningCommitments<C>>,
+) -> Result<SigningPackage<C>, Box<dyn std::error::Error>> {
+    let signing_package = SigningPackage::new(commitments, &args.messages[0]);
     print_signing_package(logger, &signing_package);
     Ok(signing_package)
 }
 
-// Input required:
-// 1. message
-fn request_message(
-    args: &Args,
-    input: &mut impl BufRead,
+fn print_signing_package<C: Ciphersuite>(
     logger: &mut dyn Write,
-    commitments: BTreeMap<Identifier, SigningCommitments>,
-) -> Result<SigningPackage, Box<dyn std::error::Error>> {
-    let message = if args.cli && args.message == "-" {
-        writeln!(logger, "The message to be signed (hex encoded)")?;
-
-        let mut msg = String::new();
-        input.read_line(&mut msg)?;
-
-        hex::decode(msg.trim())?
-    } else {
-        fs::read(&args.message)?
-    };
-
-    let signing_package = SigningPackage::new(commitments, &message);
-
-    Ok(signing_package)
-}
-
-fn print_signing_package(logger: &mut dyn Write, signing_package: &SigningPackage) {
+    signing_package: &SigningPackage<C>,
+) {
     writeln!(
         logger,
         "Signing Package:\n{}",

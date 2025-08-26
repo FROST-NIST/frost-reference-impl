@@ -30,7 +30,9 @@
 //! [Feldman's VSS]: https://www.cs.umd.edu/~gasarch/TOPICS/secretsharing/feldmanVSS.pdf
 //! [secure broadcast channel]: https://frost.zfnd.org/terminology.html#broadcast-channel
 
-use std::{collections::BTreeMap, iter};
+use core::iter;
+
+use alloc::collections::BTreeMap;
 
 use rand_core::{CryptoRng, RngCore};
 
@@ -38,6 +40,9 @@ use crate::{
     Challenge, Ciphersuite, Element, Error, Field, Group, Header, Identifier, Scalar, Signature,
     SigningKey, VerifyingKey,
 };
+
+#[cfg(feature = "serialization")]
+use crate::serialization::{Deserialize, Serialize};
 
 use super::{
     evaluate_polynomial, generate_coefficients, generate_secret_polynomial,
@@ -47,12 +52,14 @@ use super::{
 
 /// DKG Round 1 structures.
 pub mod round1 {
+    use alloc::vec::Vec;
     use derive_getters::Getters;
     use zeroize::Zeroize;
 
-    use crate::serialization::{Deserialize, Serialize};
-
     use super::*;
+
+    #[cfg(feature = "serialization")]
+    use crate::serialization::{Deserialize, Serialize};
 
     /// The package that must be broadcast by each participant to all other participants
     /// between the first and second parts of the DKG protocol (round 1).
@@ -109,12 +116,13 @@ pub mod round1 {
     /// # Security
     ///
     /// This package MUST NOT be sent to other participants!
-    #[derive(Clone, PartialEq, Eq)]
+    #[derive(Clone, PartialEq, Eq, Getters)]
     pub struct SecretPackage<C: Ciphersuite> {
         /// The identifier of the participant holding the secret.
         pub(crate) identifier: Identifier<C>,
         /// Coefficients of the temporary secret polynomial for the participant.
         /// These are (a_{i0}, ..., a_{i(t−1)})) which define the polynomial f_i(x)
+        #[getter(skip)]
         pub(crate) coefficients: Vec<Scalar<C>>,
         /// The public commitment for the participant (C_i)
         pub(crate) commitment: VerifiableSecretSharingCommitment<C>,
@@ -135,11 +143,11 @@ pub mod round1 {
         }
     }
 
-    impl<C> std::fmt::Debug for SecretPackage<C>
+    impl<C> core::fmt::Debug for SecretPackage<C>
     where
         C: Ciphersuite,
     {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             f.debug_struct("SecretPackage")
                 .field("identifier", &self.identifier)
                 .field("coefficients", &"<redacted>")
@@ -167,7 +175,8 @@ pub mod round2 {
     use derive_getters::Getters;
     use zeroize::Zeroize;
 
-    use crate::serialization::{Deserialize, Serialize};
+    #[cfg(feature = "serialization")]
+    use alloc::vec::Vec;
 
     use super::*;
 
@@ -225,7 +234,7 @@ pub mod round2 {
     /// # Security
     ///
     /// This package MUST NOT be sent to other participants!
-    #[derive(Clone, PartialEq, Eq)]
+    #[derive(Clone, PartialEq, Eq, Getters)]
     pub struct SecretPackage<C: Ciphersuite> {
         /// The identifier of the participant holding the secret.
         pub(crate) identifier: Identifier<C>,
@@ -239,11 +248,11 @@ pub mod round2 {
         pub(crate) max_signers: u16,
     }
 
-    impl<C> std::fmt::Debug for SecretPackage<C>
+    impl<C> core::fmt::Debug for SecretPackage<C>
     where
         C: Ciphersuite,
     {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             f.debug_struct("SecretPackage")
                 .field("identifier", &self.identifier)
                 .field("commitment", &self.commitment)
@@ -269,7 +278,7 @@ pub mod round2 {
 ///
 /// It returns the [`round1::SecretPackage`] that must be kept in memory
 /// by the participant for the other steps, and the [`round1::Package`] that
-/// must be sent to other participants.
+/// must be sent to each other participant in the DKG run.
 pub fn part1<C: Ciphersuite, R: RngCore + CryptoRng>(
     identifier: Identifier<C>,
     max_signers: u16,
@@ -316,17 +325,19 @@ fn challenge<C>(
     identifier: Identifier<C>,
     verifying_key: &VerifyingKey<C>,
     R: &Element<C>,
-) -> Option<Challenge<C>>
+) -> Result<Challenge<C>, Error<C>>
 where
     C: Ciphersuite,
 {
     let mut preimage = vec![];
 
     preimage.extend_from_slice(identifier.serialize().as_ref());
-    preimage.extend_from_slice(<C::Group>::serialize(&verifying_key.element).as_ref());
-    preimage.extend_from_slice(<C::Group>::serialize(R).as_ref());
+    preimage.extend_from_slice(<C::Group>::serialize(&verifying_key.to_element())?.as_ref());
+    preimage.extend_from_slice(<C::Group>::serialize(R)?.as_ref());
 
-    Some(Challenge(C::HDKG(&preimage[..])?))
+    Ok(Challenge(
+        C::HDKG(&preimage[..]).ok_or(Error::DKGNotSupported)?,
+    ))
 }
 
 /// Compute the proof of knowledge of the secret coefficients used to generate
@@ -346,8 +357,7 @@ pub(crate) fn compute_proof_of_knowledge<C: Ciphersuite, R: RngCore + CryptoRng>
     // > a context string to prevent replay attacks.
     let k = <<C::Group as Group>::Field>::random(&mut rng);
     let R_i = <C::Group>::generator() * k;
-    let c_i = challenge::<C>(identifier, &commitment.verifying_key()?, &R_i)
-        .ok_or(Error::DKGNotSupported)?;
+    let c_i = challenge::<C>(identifier, &commitment.verifying_key()?, &R_i)?;
     let a_i0 = *coefficients
         .first()
         .expect("coefficients must have at least one element");
@@ -361,7 +371,7 @@ pub(crate) fn compute_proof_of_knowledge<C: Ciphersuite, R: RngCore + CryptoRng>
 pub(crate) fn verify_proof_of_knowledge<C: Ciphersuite>(
     identifier: Identifier<C>,
     commitment: &VerifiableSecretSharingCommitment<C>,
-    proof_of_knowledge: Signature<C>,
+    proof_of_knowledge: &Signature<C>,
 ) -> Result<(), Error<C>> {
     // Round 1, Step 5
     //
@@ -372,26 +382,28 @@ pub(crate) fn verify_proof_of_knowledge<C: Ciphersuite>(
     let R_ell = proof_of_knowledge.R;
     let mu_ell = proof_of_knowledge.z;
     let phi_ell0 = commitment.verifying_key()?;
-    let c_ell = challenge::<C>(ell, &phi_ell0, &R_ell).ok_or(Error::DKGNotSupported)?;
-    if R_ell != <C::Group>::generator() * mu_ell - phi_ell0.element * c_ell.0 {
+    let c_ell = challenge::<C>(ell, &phi_ell0, &R_ell)?;
+    if R_ell != <C::Group>::generator() * mu_ell - phi_ell0.to_element() * c_ell.0 {
         return Err(Error::InvalidProofOfKnowledge { culprit: ell });
     }
     Ok(())
 }
 
-/// Performs the second part of the distributed key generation protocol
-/// for the participant holding the given [`round1::SecretPackage`],
-/// given the received [`round1::Package`]s received from the other participants.
+/// Performs the second part of the distributed key generation protocol for the
+/// participant holding the given [`round1::SecretPackage`], given the received
+/// [`round1::Package`]s received from the other participants.
 ///
-/// `round1_packages` maps the identifier of each participant to the
-/// [`round1::Package`] they sent. These identifiers must come from whatever mapping
-/// the coordinator has between communication channels and participants, i.e.
-/// they must have assurance that the [`round1::Package`] came from
-/// the participant with that identifier.
+/// `round1_packages` maps the identifier of each other participant to the
+/// [`round1::Package`] they sent to the current participant (the owner of
+/// `secret_package`). These identifiers must come from whatever mapping the
+/// coordinator has between communication channels and participants, i.e. they
+/// must have assurance that the [`round1::Package`] came from the participant
+/// with that identifier.
 ///
-/// It returns the [`round2::SecretPackage`] that must be kept in memory
-/// by the participant for the final step, and the a map of [`round2::Package`]s that
-/// must be sent to each participant who has the given identifier in the map key.
+/// It returns the [`round2::SecretPackage`] that must be kept in memory by the
+/// participant for the final step, and the map of [`round2::Package`]s that
+/// must be sent to each other participant who has the given identifier in the
+/// map key.
 pub fn part2<C: Ciphersuite>(
     secret_package: round1::SecretPackage<C>,
     round1_packages: &BTreeMap<Identifier<C>, round1::Package<C>>,
@@ -420,7 +432,7 @@ pub fn part2<C: Ciphersuite>(
         verify_proof_of_knowledge(
             ell,
             &round1_package.commitment,
-            round1_package.proof_of_knowledge,
+            &round1_package.proof_of_knowledge,
         )?;
 
         // Round 2, Step 1
@@ -452,22 +464,22 @@ pub fn part2<C: Ciphersuite>(
 }
 
 /// Performs the third and final part of the distributed key generation protocol
-/// for the participant holding the given [`round2::SecretPackage`],
-/// given the received [`round1::Package`]s and [`round2::Package`]s received from
-/// the other participants.
+/// for the participant holding the given [`round2::SecretPackage`], given the
+/// received [`round1::Package`]s and [`round2::Package`]s received from the
+/// other participants.
 ///
 /// `round1_packages` must be the same used in [`part2()`].
 ///
-/// `round2_packages` maps the identifier of each participant to the
-/// [`round2::Package`] they sent. These identifiers must come from whatever mapping
-/// the coordinator has between communication channels and participants, i.e.
-/// they must have assurance that the [`round2::Package`] came from
-/// the participant with that identifier.
+/// `round2_packages` maps the identifier of each other participant to the
+/// [`round2::Package`] they sent to the current participant (the owner of
+/// `secret_package`). These identifiers must come from whatever mapping the
+/// coordinator has between communication channels and participants, i.e. they
+/// must have assurance that the [`round2::Package`] came from the participant
+/// with that identifier.
 ///
 /// It returns the [`KeyPackage`] that has the long-lived key share for the
-/// participant, and the [`PublicKeyPackage`]s that has public information
-/// about all participants; both of which are required to compute FROST
-/// signatures.
+/// participant, and the [`PublicKeyPackage`]s that has public information about
+/// all participants; both of which are required to compute FROST signatures.
 pub fn part3<C: Ciphersuite>(
     round2_secret_package: &round2::SecretPackage<C>,
     round1_packages: &BTreeMap<Identifier<C>, round1::Package<C>>,
@@ -519,11 +531,11 @@ pub fn part3<C: Ciphersuite>(
         //
         // > Each P_i calculates their long-lived private signing share by computing
         // > s_i = ∑^n_{ℓ=1} f_ℓ(i), stores s_i securely, and deletes each f_ℓ(i).
-        signing_share = signing_share + f_ell_i.0;
+        signing_share = signing_share + f_ell_i.to_scalar();
     }
 
     signing_share = signing_share + round2_secret_package.secret_share;
-    let signing_share = SigningShare(signing_share);
+    let signing_share = SigningShare::new(signing_share);
 
     // Round 2, Step 4
     //

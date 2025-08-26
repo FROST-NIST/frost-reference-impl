@@ -26,7 +26,9 @@ spans = []
 
 [package]
 authors = ["The wasm-bindgen Developers"]
-description = "Backend code generation of the wasm-bindgen tool\n"
+description = """
+Backend code generation of the wasm-bindgen tool
+"""
 documentation = "https://docs.rs/wasm-bindgen-backend"
 edition = "2018"
 homepage = "https://rustwasm.github.io/wasm-bindgen/"

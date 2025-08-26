@@ -5,6 +5,8 @@
 #![doc = include_str!("../README.md")]
 #![doc = document_features::document_features!()]
 
+extern crate alloc;
+
 use std::collections::BTreeMap;
 
 use ed448_goldilocks::{
@@ -24,7 +26,9 @@ use frost_core as frost;
 mod tests;
 
 // Re-exports in our public API
-pub use frost_core::{serde, Ciphersuite, Field, FieldError, Group, GroupError};
+#[cfg(feature = "serde")]
+pub use frost_core::serde;
+pub use frost_core::{Ciphersuite, Field, FieldError, Group, GroupError};
 pub use rand_core;
 
 /// An error.
@@ -98,8 +102,11 @@ impl Group for Ed448Group {
         Self::Element::generator()
     }
 
-    fn serialize(element: &Self::Element) -> Self::Serialization {
-        element.compress().0
+    fn serialize(element: &Self::Element) -> Result<Self::Serialization, GroupError> {
+        if *element == Self::identity() {
+            return Err(GroupError::InvalidIdentityElement);
+        }
+        Ok(element.compress().0)
     }
 
     fn deserialize(buf: &Self::Serialization) -> Result<Self::Element, GroupError> {
@@ -143,7 +150,7 @@ fn hash_to_scalar(inputs: &[&[u8]]) -> Scalar {
 
 /// Context string from the ciphersuite in the [spec]
 ///
-/// [spec]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#section-6.3-1
+/// [spec]: https://datatracker.ietf.org/doc/html/rfc9591#section-6.3-1
 const CONTEXT_STRING: &str = "FROST-ED448-SHAKE256-v1";
 
 /// An implementation of the FROST(Ed448, SHAKE256) ciphersuite.
@@ -161,35 +168,35 @@ impl Ciphersuite for Ed448Shake256 {
 
     /// H1 for FROST(Ed448, SHAKE256)
     ///
-    /// [spec]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#section-6.3-2.2.2.1
+    /// [spec]: https://datatracker.ietf.org/doc/html/rfc9591#section-6.3-2.4.2.2
     fn H1(m: &[u8]) -> <<Self::Group as Group>::Field as Field>::Scalar {
         hash_to_scalar(&[CONTEXT_STRING.as_bytes(), b"rho", m])
     }
 
     /// H2 for FROST(Ed448, SHAKE256)
     ///
-    /// [spec]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#section-6.3-2.2.2.2
+    /// [spec]: https://datatracker.ietf.org/doc/html/rfc9591#section-6.3-2.4.2.4
     fn H2(m: &[u8]) -> <<Self::Group as Group>::Field as Field>::Scalar {
         hash_to_scalar(&[b"SigEd448\0\0", m])
     }
 
     /// H3 for FROST(Ed448, SHAKE256)
     ///
-    /// [spec]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#section-6.3-2.2.2.3
+    /// [spec]: https://datatracker.ietf.org/doc/html/rfc9591#section-6.3-2.4.2.6
     fn H3(m: &[u8]) -> <<Self::Group as Group>::Field as Field>::Scalar {
         hash_to_scalar(&[CONTEXT_STRING.as_bytes(), b"nonce", m])
     }
 
     /// H4 for FROST(Ed448, SHAKE256)
     ///
-    /// [spec]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#section-6.3-2.2.2.4
+    /// [spec]: https://datatracker.ietf.org/doc/html/rfc9591#section-6.3-2.4.2.8
     fn H4(m: &[u8]) -> Self::HashOutput {
         hash_to_array(&[CONTEXT_STRING.as_bytes(), b"msg", m])
     }
 
     /// H5 for FROST(Ed448, SHAKE256)
     ///
-    /// [spec]: https://www.ietf.org/archive/id/draft-irtf-cfrg-frost-14.html#section-6.3-2.2.2.5
+    /// [spec]: https://datatracker.ietf.org/doc/html/rfc9591#section-6.3-2.4.2.10
     fn H5(m: &[u8]) -> Self::HashOutput {
         hash_to_array(&[CONTEXT_STRING.as_bytes(), b"com", m])
     }

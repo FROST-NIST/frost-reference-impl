@@ -1,29 +1,20 @@
-#[cfg(not(feature = "ed448"))]
-use frost_ed25519 as frost;
-#[cfg(feature = "ed448")]
-use frost_ed448 as frost;
+use frost_core::{self as frost, Ciphersuite};
 
 use frost::{
     keys::dkg::{round1, round2},
     Error, Identifier,
 };
 
-use eyre::eyre;
-
 use std::io::{BufRead, Write};
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Config {
+pub struct Config<C: Ciphersuite> {
     pub min_signers: u16,
     pub max_signers: u16,
-    pub identifier: Identifier,
+    pub identifier: Identifier<C>,
 }
 
-pub trait Logger {
-    fn log(&mut self, value: String);
-}
-
-fn validate_inputs(config: &Config) -> Result<(), Error> {
+fn validate_inputs<C: Ciphersuite>(config: &Config<C>) -> Result<(), Error<C>> {
     if config.min_signers < 2 {
         return Err(Error::InvalidMinSigners);
     }
@@ -39,10 +30,10 @@ fn validate_inputs(config: &Config) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn request_inputs(
+pub fn request_inputs<C: Ciphersuite + 'static>(
     input: &mut impl BufRead,
     logger: &mut dyn Write,
-) -> Result<Config, Box<dyn std::error::Error>> {
+) -> Result<Config<C>, Box<dyn std::error::Error>> {
     writeln!(logger, "The minimum number of signers: (2 or more)")?;
 
     let mut min = String::new();
@@ -51,7 +42,7 @@ pub fn request_inputs(
     let min_signers = min
         .trim()
         .parse::<u16>()
-        .map_err(|_| Error::InvalidMinSigners)?;
+        .map_err(|_| Error::<C>::InvalidMinSigners)?;
 
     writeln!(logger, "The maximum number of signers:")?;
 
@@ -60,7 +51,7 @@ pub fn request_inputs(
     let max_signers = max
         .trim()
         .parse::<u16>()
-        .map_err(|_| Error::InvalidMaxSigners)?;
+        .map_err(|_| Error::<C>::InvalidMaxSigners)?;
 
     writeln!(
         logger,
@@ -74,7 +65,7 @@ pub fn request_inputs(
     let u16_identifier = identifier_input
         .trim()
         .parse::<u16>()
-        .map_err(|_| Error::MalformedIdentifier)?;
+        .map_err(|_| Error::<C>::MalformedIdentifier)?;
     let identifier = u16_identifier.try_into()?;
 
     let config = Config {
@@ -88,22 +79,23 @@ pub fn request_inputs(
     Ok(config)
 }
 
-pub fn read_identifier(input: &mut impl BufRead) -> Result<Identifier, Box<dyn std::error::Error>> {
+pub fn read_identifier<C: Ciphersuite + 'static>(
+    input: &mut impl BufRead,
+) -> Result<Identifier<C>, Box<dyn std::error::Error>> {
     let mut identifier_input = String::new();
     input.read_line(&mut identifier_input)?;
     let bytes = hex::decode(identifier_input.trim())?;
-    let serialization = bytes.try_into().map_err(|_| eyre!("Invalid Identifier"))?;
-    let identifier = Identifier::deserialize(&serialization)?;
+    let identifier = Identifier::<C>::deserialize(&bytes)?;
     Ok(identifier)
 }
 
-pub fn read_round1_package(
+pub fn read_round1_package<C: Ciphersuite + 'static>(
     input: &mut impl BufRead,
     logger: &mut dyn Write,
-) -> Result<(Identifier, round1::Package), Box<dyn std::error::Error>> {
+) -> Result<(Identifier<C>, round1::Package<C>), Box<dyn std::error::Error>> {
     writeln!(logger, "The sender's identifier (hex string):")?;
 
-    let identifier = read_identifier(input)?;
+    let identifier = read_identifier::<C>(input)?;
 
     writeln!(logger, "Their JSON-encoded Round 1 Package:")?;
 
@@ -114,13 +106,13 @@ pub fn read_round1_package(
     Ok((identifier, round1_package))
 }
 
-pub fn read_round2_package(
+pub fn read_round2_package<C: Ciphersuite + 'static>(
     input: &mut impl BufRead,
     logger: &mut dyn Write,
-) -> Result<(Identifier, round2::Package), Box<dyn std::error::Error>> {
+) -> Result<(Identifier<C>, round2::Package<C>), Box<dyn std::error::Error>> {
     writeln!(logger, "The sender's identifier (hex string):")?;
 
-    let identifier = read_identifier(input)?;
+    let identifier = read_identifier::<C>(input)?;
 
     writeln!(logger, "Their JSON-encoded Round 2 Package:")?;
 

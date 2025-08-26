@@ -1,4 +1,4 @@
-//! Error type. 
+//! Error type.
 use std::fmt;
 
 #[derive(Debug)]
@@ -28,12 +28,14 @@ impl fmt::Display for StructIs {
 pub enum Problem {
     NotNamedStruct(StructIs),
     UnnamedField,
+    UnitStruct,
     InnerAttribute,
     EmptyAttribute,
     NoGrouping,
     NonParensGrouping,
     EmptyGrouping,
     TokensFollowSkip,
+    TokensFollowCopy,
     TokensFollowNewName,
     InvalidAttribute,
     BotchedDocComment,
@@ -44,31 +46,35 @@ impl fmt::Display for Problem {
         match self {
             Self::NotNamedStruct(is) => {
                 write!(f, "type must be a named struct, not {}", is)
-            },
+            }
             Self::UnnamedField => write!(f, "struct fields must be named"),
+            Self::UnitStruct => write!(f, "unit struct has nothing to dissolve"),
             Self::InnerAttribute => {
                 write!(f, "attribute is an outer not inner attribute")
-            },
+            }
             Self::EmptyAttribute => write!(f, "attribute has no tokens"),
             Self::NoGrouping => write!(f, "attribute tokens must be grouped"),
             Self::NonParensGrouping => {
                 write!(f, "attribute tokens must be within parenthesis")
-            },
+            }
             Self::EmptyGrouping => {
                 write!(f, "no attribute tokens within parenthesis grouping")
-            },
+            }
             Self::TokensFollowSkip => {
                 write!(f, "tokens are not meant to follow skip attribute")
-            },
+            }
+            Self::TokensFollowCopy => {
+                write!(f, "tokens are not meant to follow copy attribute")
+            }
             Self::TokensFollowNewName => {
                 write!(f, "no further tokens must follow new name")
-            },
+            }
             Self::InvalidAttribute => {
                 write!(f, "invalid attribute")
-            },
+            }
             Self::BotchedDocComment => {
                 write!(f, "Doc comment is botched")
-            },
+            }
         }
     }
 }

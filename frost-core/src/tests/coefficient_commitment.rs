@@ -1,7 +1,5 @@
 //! CoefficientCommitment functions
 
-use std::convert::TryFrom;
-
 use crate as frost;
 use crate::{keys::CoefficientCommitment, tests::helpers::generate_element, Group};
 use debugless_unwrap::DebuglessUnwrap;
@@ -16,23 +14,25 @@ pub fn check_serialization_of_coefficient_commitment<C: Ciphersuite, R: RngCore 
 ) {
     let element = generate_element::<C, R>(&mut rng);
 
-    let expected = <C::Group>::serialize(&element);
+    let expected = <C::Group>::serialize(&element).unwrap();
 
-    let data = frost::keys::CoefficientCommitment::<C>(element).serialize();
+    let data = frost::keys::CoefficientCommitment::<C>::new(element)
+        .serialize()
+        .unwrap();
 
-    assert!(expected.as_ref() == data.as_ref());
+    assert!(expected.as_ref() == data);
 }
 
 /// Test create a CoefficientCommitment.
 pub fn check_create_coefficient_commitment<C: Ciphersuite, R: RngCore + CryptoRng>(mut rng: R) {
     let element = generate_element::<C, R>(&mut rng);
 
-    let expected = CoefficientCommitment::<C>(element);
+    let expected = CoefficientCommitment::<C>::new(element);
 
-    let serialized_element = <C::Group>::serialize(&element);
+    let serialized_element = <C::Group>::serialize(&element).unwrap();
 
     let coeff_commitment =
-        frost::keys::CoefficientCommitment::<C>::deserialize(serialized_element).unwrap();
+        frost::keys::CoefficientCommitment::<C>::deserialize(serialized_element.as_ref()).unwrap();
 
     assert!(expected == coeff_commitment);
 }
@@ -48,7 +48,8 @@ pub fn check_create_coefficient_commitment_error<C: Ciphersuite + PartialEq>(
         )
         .debugless_unwrap();
 
-    let coeff_commitment = frost::keys::CoefficientCommitment::<C>::deserialize(serialized);
+    let coeff_commitment =
+        frost::keys::CoefficientCommitment::<C>::deserialize(serialized.as_ref());
 
     assert!(coeff_commitment.is_err());
 }
@@ -59,7 +60,7 @@ pub fn check_get_value_of_coefficient_commitment<C: Ciphersuite, R: RngCore + Cr
 ) {
     let element = generate_element::<C, R>(&mut rng);
 
-    let coeff_commitment = frost::keys::CoefficientCommitment::<C>(element);
+    let coeff_commitment = frost::keys::CoefficientCommitment::<C>::new(element);
     let value = coeff_commitment.value();
 
     assert!(value == element)

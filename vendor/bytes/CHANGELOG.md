@@ -1,8 +1,105 @@
+# 1.8.0 (October 21, 2024)
+
+- Guarantee address in `split_off`/`split_to` for empty slices (#740)
+
+# 1.7.2 (September 17, 2024)
+
+### Fixed
+
+- Fix default impl of `Buf::{get_int, get_int_le}` (#732)
+
+### Documented
+
+- Fix double spaces in comments and doc comments (#731)
+
+### Internal changes
+
+- Ensure BytesMut::advance reduces capacity (#728) 
+
+# 1.7.1 (August 1, 2024)
+
+This release reverts the following change due to a regression:
+
+- Reuse capacity when possible in `<BytesMut as Buf>::advance` impl (#698)
+
+The revert can be found at #726.
+
+# 1.7.0 (July 31, 2024)
+
+### Added
+
+- Add conversion from `Bytes` to `BytesMut` (#695, #710)
+- Add reclaim method without additional allocation (#686)
+
+### Documented
+
+- Clarify how `BytesMut::zeroed` works (#714)
+- Clarify the behavior of `Buf::chunk` (#717)
+
+### Changed
+
+- Change length condition of `BytesMut::truncate`
+- Reuse capacity when possible in `<BytesMut as Buf>::advance` impl (#698)
+- Improve `must_use` suggestion of `BytesMut::split` (#699)
+
+### Internal changes
+
+- Use `ManuallyDrop` instead of `mem::forget` (#678)
+- Don't set `len` in `BytesMut::reserve` (#682)
+- Optimize `Bytes::copy_to_bytes` (#688)
+- Refactor `BytesMut::truncate` (#694)
+- Refactor `BytesMut::resize` (#696)
+- Reorder assertion in `Bytes::split_to`, `Bytes::split_off` (#689, #693)
+- Use `offset_from` in more places (#705)
+- Correct the wrong usage of `IntoIter` (#707)
+
+# 1.6.1 (July 13, 2024)
+
+This release fixes a bug where `Bytes::is_unique` returns incorrect values when
+the `Bytes` originates from a shared `BytesMut`. (#718)
+
+# 1.6.0 (March 22, 2024)
+
+### Added
+
+- Add `Bytes::is_unique` (#643)
+
+### Documented
+
+- Fix changelog typo (#628)
+- Fix some spelling mistakes (#633)
+- Typo fix (#637)
+- Fix broken links (#639)
+- Add security policy (#649)
+
+### Internal changes
+
+- Move comment to correct constant (#629)
+- Various cleanup (#635)
+- Simplify `UninitSlice::as_uninit_slice_mut()` logic (#644)
+- Use `self.` instead of `Self::` (#642)
+- `BytesMut`: Assert alignment of `Shared` (#652)
+- Remove unnecessary namespace qualifier (#660)
+- Remove an unnecessary else branch (#662)
+- Remove unreachable else branch (#661)
+- make parameter mut in `From<Vec>` (#667)
+- Restore commented tests (#665)
+- Use `sub` instead of `offset` (#668)
+- Calculate original capacity only if necessary (#666)
+- `set_vec_pos` does not need a second parameter (#672)
+- `get_vec_pos`: use `&self` instead of `&mut self` (#670)
+- Refactor `split_at`/`split_to` (#663)
+- Use `Iterator` from the prelude (#673)
+- `copy_to_bytes`: Add panic section to docs (#676)
+- Remove redundant reserve call (#674)
+- Use `ManuallyDrop` instead of `mem::forget` (#675)
+
+
 # 1.5.0 (September 7, 2023)
 
 ### Added
 
-- Add `UninitSlice::{new,init}` (#598, #599)
+- Add `UninitSlice::{new,uninit}` (#598, #599)
 - Implement `BufMut` for `&mut [MaybeUninit<u8>]` (#597)
 
 ### Changed

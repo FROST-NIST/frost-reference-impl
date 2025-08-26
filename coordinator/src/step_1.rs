@@ -1,7 +1,4 @@
-#[cfg(not(feature = "ed448"))]
-use frost_ed25519 as frost;
-#[cfg(feature = "ed448")]
-use frost_ed448 as frost;
+use frost_core::{self as frost, Ciphersuite};
 
 use frost::{keys::PublicKeyPackage, round1::SigningCommitments, Identifier};
 
@@ -10,21 +7,21 @@ use std::{
     io::{BufRead, Write},
 };
 
-use crate::{args::Args, comms::Comms, input::read_from_file_or_stdin};
+use crate::{args::ProcessedArgs, comms::Comms};
 
 #[derive(PartialEq, Debug)]
-pub struct ParticipantsConfig {
-    pub commitments: BTreeMap<Identifier, SigningCommitments>,
-    pub pub_key_package: PublicKeyPackage,
+pub struct ParticipantsConfig<C: Ciphersuite> {
+    pub commitments: BTreeMap<Identifier<C>, SigningCommitments<C>>,
+    pub pub_key_package: PublicKeyPackage<C>,
 }
 
 // TODO: needs to include the coordinator's keys!
-pub async fn step_1(
-    args: &Args,
-    comms: &mut dyn Comms,
+pub async fn step_1<C: Ciphersuite>(
+    args: &ProcessedArgs<C>,
+    comms: &mut dyn Comms<C>,
     reader: &mut dyn BufRead,
     logger: &mut dyn Write,
-) -> Result<ParticipantsConfig, Box<dyn std::error::Error>> {
+) -> Result<ParticipantsConfig<C>, Box<dyn std::error::Error>> {
     let participants = read_commitments(args, comms, reader, logger).await?;
     print_participants(logger, &participants.commitments);
     Ok(participants)
@@ -36,43 +33,25 @@ pub async fn step_1(
 // 1. public key package
 // 2. number of participants
 // 3. identifiers for all participants
-async fn read_commitments(
-    args: &Args,
-    comms: &mut dyn Comms,
+async fn read_commitments<C: Ciphersuite>(
+    args: &ProcessedArgs<C>,
+    comms: &mut dyn Comms<C>,
     input: &mut dyn BufRead,
     logger: &mut dyn Write,
-) -> Result<ParticipantsConfig, Box<dyn std::error::Error>> {
-    let pub_key_package = read_from_file_or_stdin(
-        input,
-        logger,
-        "public key package",
-        &args.public_key_package,
-    )?;
-    let pub_key_package: PublicKeyPackage = serde_json::from_str(&pub_key_package)?;
-
-    let num_of_participants = if args.cli && args.num_signers == 0 {
-        writeln!(logger, "The number of participants: ")?;
-
-        let mut participants = String::new();
-        input.read_line(&mut participants)?;
-        participants.trim().parse::<u16>()?
-    } else {
-        args.num_signers
-    };
-
+) -> Result<ParticipantsConfig<C>, Box<dyn std::error::Error>> {
     let commitments_list = comms
-        .get_signing_commitments(input, logger, &pub_key_package, num_of_participants)
+        .get_signing_commitments(input, logger, &args.public_key_package, args.num_signers)
         .await?;
 
     Ok(ParticipantsConfig {
         commitments: commitments_list,
-        pub_key_package,
+        pub_key_package: args.public_key_package.clone(),
     })
 }
 
-pub fn print_participants(
+pub fn print_participants<C: Ciphersuite>(
     logger: &mut dyn Write,
-    participants: &BTreeMap<Identifier, SigningCommitments>,
+    participants: &BTreeMap<Identifier<C>, SigningCommitments<C>>,
 ) {
     writeln!(logger, "Selected participants: ",).unwrap();
 
@@ -81,16 +60,14 @@ pub fn print_participants(
     }
 }
 
-#[cfg(all(test, not(feature = "ed448")))]
+#[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
-    use frost::{
+    use frost_ed25519::{
         keys::{PublicKeyPackage, VerifyingShare},
         Error, Identifier, VerifyingKey,
     };
-    use frost_ed25519 as frost;
-    use hex::FromHex;
 
     use crate::comms::cli::validate;
 
@@ -106,15 +83,15 @@ mod tests {
         let mut signer_pubkeys = BTreeMap::new();
         signer_pubkeys.insert(
             id_1,
-            VerifyingShare::deserialize(<[u8; 32]>::from_hex(PUBLIC_KEY_1).unwrap()).unwrap(),
+            VerifyingShare::deserialize(&hex::decode(PUBLIC_KEY_1).unwrap()).unwrap(),
         );
         signer_pubkeys.insert(
             id_2,
-            VerifyingShare::deserialize(<[u8; 32]>::from_hex(PUBLIC_KEY_2).unwrap()).unwrap(),
+            VerifyingShare::deserialize(&hex::decode(PUBLIC_KEY_2).unwrap()).unwrap(),
         );
 
         let group_public =
-            VerifyingKey::deserialize(<[u8; 32]>::from_hex(GROUP_PUBLIC_KEY).unwrap()).unwrap();
+            VerifyingKey::deserialize(&hex::decode(GROUP_PUBLIC_KEY).unwrap()).unwrap();
 
         PublicKeyPackage::new(signer_pubkeys, group_public)
     }

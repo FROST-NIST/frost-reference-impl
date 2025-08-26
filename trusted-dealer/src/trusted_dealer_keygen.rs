@@ -1,20 +1,18 @@
-#[cfg(not(feature = "ed448"))]
-use frost_ed25519 as frost;
-#[cfg(feature = "ed448")]
-use frost_ed448 as frost;
+use frost_core::{self as frost, Ciphersuite};
 
 use frost::keys::{IdentifierList, PublicKeyPackage, SecretShare};
 use frost::{Error, Identifier, SigningKey};
-use rand::rngs::ThreadRng;
+use rand::{CryptoRng, RngCore};
 use std::collections::BTreeMap;
 
 use crate::inputs::Config;
 
-pub fn trusted_dealer_keygen(
+#[allow(clippy::type_complexity)]
+pub fn trusted_dealer_keygen<C: Ciphersuite, R: RngCore + CryptoRng>(
     config: &Config,
-    identifiers: IdentifierList,
-    rng: &mut ThreadRng,
-) -> Result<(BTreeMap<Identifier, SecretShare>, PublicKeyPackage), Error> {
+    identifiers: IdentifierList<C>,
+    rng: &mut R,
+) -> Result<(BTreeMap<Identifier<C>, SecretShare<C>>, PublicKeyPackage<C>), Error<C>> {
     let (shares, pubkeys) = frost::keys::generate_with_dealer(
         config.max_signers,
         config.min_signers,
@@ -29,18 +27,13 @@ pub fn trusted_dealer_keygen(
     Ok((shares, pubkeys))
 }
 
-pub fn split_secret(
+#[allow(clippy::type_complexity)]
+pub fn split_secret<C: Ciphersuite, R: RngCore + CryptoRng>(
     config: &Config,
-    identifiers: IdentifierList,
-    rng: &mut ThreadRng,
-) -> Result<(BTreeMap<Identifier, SecretShare>, PublicKeyPackage), Error> {
-    let secret_key = SigningKey::deserialize(
-        config
-            .secret
-            .clone()
-            .try_into()
-            .map_err(|_| Error::MalformedSigningKey)?,
-    )?;
+    identifiers: IdentifierList<C>,
+    rng: &mut R,
+) -> Result<(BTreeMap<Identifier<C>, SecretShare<C>>, PublicKeyPackage<C>), Error<C>> {
+    let secret_key = SigningKey::deserialize(&config.secret)?;
     let (shares, pubkeys) = frost::keys::split(
         &secret_key,
         config.max_signers,
@@ -56,7 +49,6 @@ pub fn split_secret(
     Ok((shares, pubkeys))
 }
 
-#[cfg(not(feature = "ed448"))]
 #[cfg(test)]
 mod tests {
 

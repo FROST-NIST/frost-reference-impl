@@ -4,7 +4,9 @@
 //! The RTS is used to help a signer (participant) repair their lost share. This is achieved
 //! using a subset of the other signers know here as `helpers`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use alloc::collections::{BTreeMap, BTreeSet};
+
+use alloc::vec::Vec;
 
 use crate::{
     compute_lagrange_coefficient, Ciphersuite, CryptoRng, Error, Field, Group, Header, Identifier,
@@ -56,7 +58,7 @@ fn compute_last_random_value<C: Ciphersuite>(
     // Calculate Lagrange Coefficient for helper_i
     let zeta_i = compute_lagrange_coefficient(helpers, Some(participant), share_i.identifier)?;
 
-    let lhs = zeta_i * share_i.signing_share.0;
+    let lhs = zeta_i * share_i.signing_share.to_scalar();
 
     let mut out: BTreeMap<Identifier<C>, Scalar<C>> = helpers
         .iter()
@@ -123,7 +125,7 @@ pub fn repair_share_step_3<C: Ciphersuite>(
     SecretShare {
         header: Header::default(),
         identifier,
-        signing_share: SigningShare(share),
+        signing_share: SigningShare::new(share),
         commitment: commitment.clone(),
     }
 }

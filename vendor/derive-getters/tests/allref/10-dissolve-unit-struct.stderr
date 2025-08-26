@@ -1,0 +1,7 @@
+error: unit struct has nothing to dissolve
+ --> tests/allref/10-dissolve-unit-struct.rs:3:30
+  |
+3 | #[derive(Debug, Copy, Clone, Dissolve)]
+  |                              ^^^^^^^^
+  |
+  = note: this error originates in the derive macro `Dissolve` (in Nightly builds, run with -Z macro-backtrace for more info)
