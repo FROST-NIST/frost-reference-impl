@@ -74,7 +74,7 @@ where
             != (group_commitment_share.0 + (verifying_share.to_element() * challenge.0 * lambda_i))
         {
             return Err(Error::InvalidSignatureShare {
-                culprit: identifier,
+                culprits: vec![identifier],
             });
         }
 

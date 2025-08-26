@@ -1,5 +1,7 @@
 //! FROST Error types
 
+use alloc::vec::Vec;
+
 #[cfg(feature = "std")]
 use thiserror::Error;
 
@@ -13,7 +15,7 @@ pub struct ParticipantError<C: Ciphersuite>(Identifier<C>);
 
 /// An error related to FROST.
 #[non_exhaustive]
-#[derive(Error, Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
 pub enum Error<C: Ciphersuite> {
     /// min_signers is invalid
     #[error("min_signers must be at least 2 and not larger than max_signers")]
@@ -70,7 +72,7 @@ pub enum Error<C: Ciphersuite> {
     #[error("Invalid signature share.")]
     InvalidSignatureShare {
         /// The identifier of the signer whose share validation failed.
-        culprit: Identifier<C>,
+        culprits: Vec<Identifier<C>>,
     },
     /// Secret share verification failed.
     #[error("Invalid secret share.")]
@@ -117,21 +119,17 @@ impl<C> Error<C>
 where
     C: Ciphersuite,
 {
-    /// Return the identifier of the participant that caused the error.
-    /// Returns None if not applicable for the error.
+    /// Return the identifiers of the participants that caused the error.
+    /// Returns an empty vector if not applicable for the error.
     ///
-    /// This can be used to penalize a participant that does not follow the
+    /// This can be used to penalize participants that do not follow the
     /// protocol correctly, e.g. removing them from further signings.
-    pub fn culprit(&self) -> Option<Identifier<C>> {
+    pub fn culprits(&self) -> Vec<Identifier<C>> {
         // Use an exhaustive match to make sure that if we add new enum items
         // then we will explicitly check if they should be added here.
         match self {
-            Error::InvalidSignatureShare {
-                culprit: identifier,
-            }
-            | Error::InvalidProofOfKnowledge {
-                culprit: identifier,
-            } => Some(*identifier),
+            Error::InvalidSignatureShare { culprits } => culprits.clone(),
+            Error::InvalidProofOfKnowledge { culprit } => vec![*culprit],
             Error::InvalidSecretShare
             | Error::InvalidMinSigners
             | Error::InvalidMaxSigners
@@ -159,7 +157,7 @@ where
             | Error::IncorrectNumberOfCommitments
             | Error::SerializationError
             | Error::DeserializationError
-            | Error::IdentifierDerivationNotSupported => None,
+            | Error::IdentifierDerivationNotSupported => vec![],
         }
     }
 }
