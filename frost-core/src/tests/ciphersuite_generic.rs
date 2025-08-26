@@ -350,7 +350,7 @@ fn check_aggregate_corrupted_share<C: Ciphersuite + PartialEq>(
     let id1 = *signature_shares.keys().next().unwrap();
     *signature_shares.get_mut(&id1).unwrap() =
         SignatureShare::new(signature_shares[&id1].to_scalar() + one);
-    let id2 = *signature_shares.keys().skip(1).next().unwrap();
+    let id2 = *signature_shares.keys().nth(1).unwrap();
     *signature_shares.get_mut(&id2).unwrap() =
         SignatureShare::new(signature_shares[&id2].to_scalar() + one);
 
