@@ -575,7 +575,7 @@ where
             signing_package,
             signature_shares,
             pubkeys,
-            CheaterDetection::FirstCheater,
+            CheaterDetection::AllCheaters,
         )
     }
     #[cfg(not(feature = "cheater-detection"))]
