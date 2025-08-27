@@ -355,11 +355,11 @@ fn check_aggregate_corrupted_share<C: Ciphersuite + PartialEq>(
         SignatureShare::new(signature_shares[&id2].to_scalar() + one);
 
     let e = frost::aggregate(&signing_package, &signature_shares, &pubkey_package).unwrap_err();
-    assert_eq!(e.culprits(), vec![id1]);
+    assert_eq!(e.culprits(), vec![id1, id2]);
     assert_eq!(
         e,
         Error::InvalidSignatureShare {
-            culprits: vec![id1]
+            culprits: vec![id1, id2]
         }
     );
 
