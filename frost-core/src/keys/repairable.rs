@@ -80,11 +80,6 @@ fn compute_last_random_value<C: Ciphersuite>(
     Ok(out)
 }
 
-/// Communication round
-///
-/// `helper_i` sends 1 `delta_j` to all other helpers (j)
-/// `helper_i` retains 1 `delta_j`
-
 /// Step 2 of RTS.
 ///
 /// Generates the `sigma` values from all `deltas` received from `helpers`
@@ -101,10 +96,6 @@ pub fn repair_share_step_2<C: Ciphersuite>(deltas_j: &[Scalar<C>]) -> Scalar<C> 
 
     sigma_j
 }
-
-/// Communication round
-///
-/// `helper_j` sends 1 `sigma_j` to the `participant` repairing their share.
 
 /// Step 3 of RTS
 ///
